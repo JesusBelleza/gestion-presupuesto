@@ -1,0 +1,27 @@
+{
+  "users": [
+    {
+      "id": "1",
+      "email": "marketing@pad.edu",
+      "name": "Jefa de Marketing",
+      "role": "JEFA_MARKETING",
+      "active": true,
+      "password": "admin"
+    },
+    {
+      "id": "2",
+      "email": "producto@pad.edu",
+      "name": "Jefa de Producto",
+      "role": "JEFA_PRODUCTO",
+      "active": true,
+      "password": "user"
+    }
+  ],
+  "categories": [],
+  "activities": [],
+  "academicYears": [],
+  "products": [],
+  "budgetPlans": [],
+  "expenses": [],
+  "auditLogs": []
+}
