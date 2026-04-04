@@ -62,6 +62,7 @@ export interface Expense {
   amount: number;
   description: string;
   provider: string;
+  providerTypeId?: string;  // Tipo de proveedor
   attachmentUrls?: string[];   // multiple files
   attachmentUrl?: string;      // legacy single file
   sslNumber?: string;
@@ -69,6 +70,19 @@ export interface Expense {
   accountingEntry?: string;    // # Partida contable
   registeredBy: string;
   createdAt: string;
+}
+
+export interface ProviderType {
+  id: string;
+  name: string;
+  active: boolean;
+}
+
+export interface Provider {
+  id: string;
+  providerTypeId: string;
+  name: string;
+  active: boolean;
 }
 
 export interface AuditLog {

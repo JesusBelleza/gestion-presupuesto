@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { useSettings } from '../SettingsContext';
-import { Product, Expense, BudgetPlan, Category, AcademicYear, Activity } from '../types';
+import { Product, Expense, BudgetPlan, Category, AcademicYear, Activity, ProviderType } from '../types';
 import { apiRequest } from '../services/api';
 import { generateDashboardPDF, PDFReportData } from '../utils/generateDashboardPDF';
 
@@ -56,6 +56,7 @@ export const Dashboard: React.FC = () => {
   const [categories, setCategories]       = useState<Category[]>([]);
   const [activities, setActivities]       = useState<Activity[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
+  const [providerTypes, setProviderTypes] = useState<ProviderType[]>([]);
   const [loading, setLoading]             = useState(true);
 
   // Global filters — multi-product
@@ -75,16 +76,18 @@ export const Dashboard: React.FC = () => {
   useEffect(() => {
     (async () => {
       try {
-        const [prods, exps, plans, cats, years, acts] = await Promise.all([
+        const [prods, exps, plans, cats, years, acts, pts] = await Promise.all([
           apiRequest<Product[]>('/api/products'),
           apiRequest<Expense[]>('/api/expenses'),
           apiRequest<BudgetPlan[]>('/api/budget-plans'),
           apiRequest<Category[]>('/api/categories'),
           apiRequest<AcademicYear[]>('/api/academic-years'),
           apiRequest<Activity[]>('/api/activities'),
+          apiRequest<ProviderType[]>('/api/provider-types'),
         ]);
         setProducts(prods); setExpenses(exps); setBudgetPlans(plans);
         setCategories(cats); setAcademicYears(years); setActivities(acts);
+        setProviderTypes(pts);
       } catch (err) { console.error(err); }
       finally { setLoading(false); }
     })();
@@ -126,9 +129,9 @@ export const Dashboard: React.FC = () => {
   const totalSpent    = filteredExpenses.reduce((s, e) => s + e.amount, 0);
   const executionRate = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
 
-  // ── Chart window ──
+  // ── Chart window — full 12 months of selected year ──
   const chartWindowMonths: { label: string; year: number; monthIdx: number }[] = [];
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 12; i++) {
     const tot = chartOffset + i;
     chartWindowMonths.push({ label: MONTHS_SHORT[tot % 12], year: chartViewYear + Math.floor(tot / 12), monthIdx: tot % 12 });
   }
@@ -148,10 +151,13 @@ export const Dashboard: React.FC = () => {
 
   const isCurrentWindow = chartOffset === 0 && chartViewYear === selectedYear;
   const handleChartPrev = () => chartOffset > 0 ? setChartOffset(chartOffset - 1) : (setChartViewYear(chartViewYear - 1), setChartOffset(11));
-  const handleChartNext = () => chartOffset < 6 ? setChartOffset(chartOffset + 1) : (setChartViewYear(chartViewYear + 1), setChartOffset(0));
+  const handleChartNext = () => {
+    if (chartOffset < 1) { setChartOffset(chartOffset + 1); }
+    else { setChartViewYear(chartViewYear + 1); setChartOffset(0); }
+  };
   const handleChartReset = () => { setChartViewYear(selectedYear); setChartOffset(0); };
 
-  const firstM = chartWindowMonths[0]; const lastM = chartWindowMonths[5];
+  const firstM = chartWindowMonths[0]; const lastM = chartWindowMonths[11];
   const rangeLabel = firstM.year === lastM.year
     ? `${MONTHS_FULL[firstM.monthIdx]} – ${MONTHS_FULL[lastM.monthIdx]} ${firstM.year}`
     : `${MONTHS_FULL[firstM.monthIdx]} ${firstM.year} – ${MONTHS_FULL[lastM.monthIdx]} ${lastM.year}`;
@@ -172,7 +178,7 @@ export const Dashboard: React.FC = () => {
     ? `${MONTHS_FULL[firstTM.monthIdx]} – ${MONTHS_FULL[lastTM.monthIdx]} ${firstTM.year}`
     : `${MONTHS_FULL[firstTM.monthIdx]} ${firstTM.year} – ${MONTHS_FULL[lastTM.monthIdx]} ${lastTM.year}`;
 
-  // ── Pie data ──
+  // ── Pie data by category ──
   const pieData = categories.map(cat => {
     const catActs = activities.filter(a => a.categoryId === cat.id).map(a => a.id);
     const value   = filteredExpenses
@@ -180,6 +186,14 @@ export const Dashboard: React.FC = () => {
       .reduce((s, e) => s + e.amount, 0);
     return { name: cat.name, value };
   }).filter(c => c.value > 0);
+
+  // ── Pie data by provider type ──
+  const pieProviderData = providerTypes.map(pt => {
+    const value = filteredExpenses
+      .filter((e: any) => e.providerTypeId === pt.id)
+      .reduce((s, e) => s + e.amount, 0);
+    return { name: pt.name, value };
+  }).filter(p => p.value > 0);
 
   // ── Activity table ──
   const tableExpenses = expenses.filter(e => isSelected(e.productId));
@@ -352,84 +366,84 @@ export const Dashboard: React.FC = () => {
         ))}
       </div>
 
-      {/* ── Charts (captured for PDF) ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 bg-white p-1 rounded-2xl">
-
-        {/* Main chart — 3/5 */}
-        <div className="card lg:col-span-3">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-slate-800">Ejecución mensual vs. planificado</h3>
-            <div className="flex items-center gap-1.5">
-              <button className="btn-icon" onClick={handleChartPrev}><ChevronLeft size={15} /></button>
-              <span className="text-xs font-semibold text-slate-600 min-w-[200px] text-center">{rangeLabel}</span>
-              <button className="btn-icon" onClick={handleChartNext}><ChevronRight size={15} /></button>
-              {!isCurrentWindow && (
-                <button className="ml-1 text-[11px] font-semibold text-navy border border-navy/30 rounded-md px-2 py-1 hover:bg-navy/5"
-                  onClick={handleChartReset}>Hoy</button>
-              )}
-            </div>
+      {/* ── ROW 1: Bar/Line chart — full width ── */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold text-slate-800">Ejecución mensual vs. planificado</h3>
+          <div className="flex items-center gap-1.5">
+            <button className="btn-icon" onClick={handleChartPrev}><ChevronLeft size={15} /></button>
+            <span className="text-xs font-semibold text-slate-600 min-w-[220px] text-center">{rangeLabel}</span>
+            <button className="btn-icon" onClick={handleChartNext}><ChevronRight size={15} /></button>
+            {!isCurrentWindow && (
+              <button className="ml-1 text-[11px] font-semibold text-navy border border-navy/30 rounded-md px-2 py-1 hover:bg-navy/5"
+                onClick={handleChartReset}>Hoy</button>
+            )}
           </div>
-
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              {chartType === 'bar' ? (
-                <BarChart data={chartData} barGap={6} margin={{ left: 0, right: 4, top: 4, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} width={58}
-                    tickFormatter={(v: number) => formatCurrency(v).slice(0, 9)} />
-                  <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,.08)', fontSize: '12px' }}
-                    formatter={(v: number) => formatCurrency(v)} />
-                  <Bar dataKey="Planificado" fill={PLAN_COLOR} radius={[4, 4, 0, 0]} maxBarSize={24} />
-                  <Bar dataKey="Ejecutado"   fill={EXEC_COLOR} radius={[4, 4, 0, 0]} maxBarSize={24} />
-                </BarChart>
-              ) : chartType === 'line' ? (
-                <LineChart data={chartData} margin={{ left: 0, right: 4, top: 4, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} width={58}
-                    tickFormatter={(v: number) => formatCurrency(v).slice(0, 9)} />
-                  <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,.08)', fontSize: '12px' }}
-                    formatter={(v: number) => formatCurrency(v)} />
-                  <Legend />
-                  <Line type="monotone" dataKey="Planificado" stroke={PLAN_COLOR} strokeWidth={2.5} dot={{ r: 4, fill: PLAN_COLOR }} activeDot={{ r: 6 }} />
-                  <Line type="monotone" dataKey="Ejecutado"   stroke={EXEC_COLOR} strokeWidth={2.5} dot={{ r: 4, fill: EXEC_COLOR }} activeDot={{ r: 6 }} strokeDasharray="5 3" />
-                </LineChart>
-              ) : (
-                <PieChart>
-                  <Pie data={[
-                    { name: 'Planificado', value: chartData.reduce((s, d) => s + d.Planificado, 0) },
-                    { name: 'Ejecutado',   value: chartData.reduce((s, d) => s + d.Ejecutado,   0) },
-                  ]} innerRadius={55} outerRadius={90} paddingAngle={4} dataKey="value">
-                    <Cell fill={PLAN_COLOR} />
-                    <Cell fill={EXEC_COLOR} />
-                  </Pie>
-                  <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,.08)', fontSize: '12px' }}
-                    formatter={(v: number) => formatCurrency(v)} />
-                  <Legend />
-                </PieChart>
-              )}
-            </ResponsiveContainer>
-          </div>
-
-          {chartType !== 'pie' && (
-            <div className="flex items-center gap-5 mt-3 pt-3 border-t border-border">
-              <span className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                <span className="w-3 h-3 rounded-sm inline-block" style={{ background: PLAN_COLOR }} /> Planificado
-              </span>
-              <span className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                <span className="w-3 h-3 rounded-sm inline-block" style={{ background: EXEC_COLOR }} /> Ejecutado
-              </span>
-            </div>
-          )}
         </div>
 
-        {/* Pie by category — 2/5 */}
-        <div className="card lg:col-span-2">
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            {chartType === 'bar' ? (
+              <BarChart data={chartData} barGap={4} margin={{ left: 0, right: 4, top: 4, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} width={54}
+                  tickFormatter={(v: number) => formatCurrency(v).slice(0, 8)} />
+                <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,.08)', fontSize: '12px' }}
+                  formatter={(v: number) => formatCurrency(v)} />
+                <Bar dataKey="Planificado" fill={PLAN_COLOR} radius={[3, 3, 0, 0]} maxBarSize={18} />
+                <Bar dataKey="Ejecutado"   fill={EXEC_COLOR} radius={[3, 3, 0, 0]} maxBarSize={18} />
+              </BarChart>
+            ) : chartType === 'line' ? (
+              <LineChart data={chartData} margin={{ left: 0, right: 4, top: 4, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 10 }} width={54}
+                  tickFormatter={(v: number) => formatCurrency(v).slice(0, 8)} />
+                <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,.08)', fontSize: '12px' }}
+                  formatter={(v: number) => formatCurrency(v)} />
+                <Legend />
+                <Line type="monotone" dataKey="Planificado" stroke={PLAN_COLOR} strokeWidth={2.5} dot={{ r: 3, fill: PLAN_COLOR }} activeDot={{ r: 5 }} />
+                <Line type="monotone" dataKey="Ejecutado"   stroke={EXEC_COLOR} strokeWidth={2.5} dot={{ r: 3, fill: EXEC_COLOR }} activeDot={{ r: 5 }} strokeDasharray="5 3" />
+              </LineChart>
+            ) : (
+              <PieChart>
+                <Pie data={[
+                  { name: 'Planificado', value: chartData.reduce((s, d) => s + d.Planificado, 0) },
+                  { name: 'Ejecutado',   value: chartData.reduce((s, d) => s + d.Ejecutado,   0) },
+                ]} innerRadius={60} outerRadius={100} paddingAngle={4} dataKey="value">
+                  <Cell fill={PLAN_COLOR} />
+                  <Cell fill={EXEC_COLOR} />
+                </Pie>
+                <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,.08)', fontSize: '12px' }}
+                  formatter={(v: number) => formatCurrency(v)} />
+                <Legend />
+              </PieChart>
+            )}
+          </ResponsiveContainer>
+        </div>
+
+        {chartType !== 'pie' && (
+          <div className="flex items-center gap-5 mt-3 pt-3 border-t border-border">
+            <span className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+              <span className="w-3 h-3 rounded-sm inline-block" style={{ background: PLAN_COLOR }} /> Planificado
+            </span>
+            <span className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+              <span className="w-3 h-3 rounded-sm inline-block" style={{ background: EXEC_COLOR }} /> Ejecutado
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* ── ROW 2: Pie por categoría + Pie por tipo de proveedor ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+        {/* Pie por categoría */}
+        <div className="card">
           <h3 className="text-sm font-bold text-slate-800 mb-4">Distribución por categoría</h3>
           {pieData.length === 0 ? (
-            <div className="h-56 flex flex-col items-center justify-center text-slate-300 gap-3">
-              <BarChart2 size={36} strokeWidth={1} />
+            <div className="h-52 flex flex-col items-center justify-center text-slate-300 gap-3">
+              <BarChart2 size={32} strokeWidth={1} />
               <p className="text-sm font-medium text-slate-400">Sin datos aún</p>
             </div>
           ) : (
@@ -452,8 +466,46 @@ export const Dashboard: React.FC = () => {
                 {pieData.map((item, i) => (
                   <div key={item.name} className="flex items-center justify-between text-xs">
                     <span className="flex items-center gap-2 text-slate-600 font-medium">
-                      <span className="w-2.5 h-2.5 rounded-sm shrink-0 border border-white/60"
-                        style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                      <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                      {item.name}
+                    </span>
+                    <span className="font-semibold text-slate-700">{formatCurrency(item.value)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Pie por tipo de proveedor */}
+        <div className="card">
+          <h3 className="text-sm font-bold text-slate-800 mb-4">Distribución por tipo de proveedor</h3>
+          {pieProviderData.length === 0 ? (
+            <div className="h-52 flex flex-col items-center justify-center text-slate-300 gap-3">
+              <BarChart2 size={32} strokeWidth={1} />
+              <p className="text-sm font-medium text-slate-400">Sin datos aún</p>
+            </div>
+          ) : (
+            <>
+              <div className="h-44">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={pieProviderData} innerRadius={45} outerRadius={72} paddingAngle={4} dataKey="value"
+                      startAngle={90} endAngle={-270}>
+                      {pieProviderData.map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[(i + 3) % PIE_COLORS.length]} stroke="#fff" strokeWidth={2} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: '10px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,.08)', fontSize: '12px' }}
+                      formatter={(v: number) => formatCurrency(v)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-2 space-y-1.5">
+                {pieProviderData.map((item, i) => (
+                  <div key={item.name} className="flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-2 text-slate-600 font-medium">
+                      <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: PIE_COLORS[(i + 3) % PIE_COLORS.length] }} />
                       {item.name}
                     </span>
                     <span className="font-semibold text-slate-700">{formatCurrency(item.value)}</span>

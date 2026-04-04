@@ -2,13 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { Plus, Search, Download, Edit2, Trash2, AlertCircle, Paperclip, X } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { useSettings } from '../SettingsContext';
-import { Expense, Product, Activity, AcademicYear } from '../types';
+import { Expense, Product, Activity, AcademicYear, ProviderType, Provider, Category } from '../types';
 import { apiRequest } from '../services/api';
 import * as XLSX from 'xlsx';
 
 const EMPTY: Partial<Expense> = {
   productId: '', activityId: '', amount: 0, description: '',
-  provider: '', attachmentUrls: [], categoryId: '', sslNumber: '',
+  provider: '', providerTypeId: '', attachmentUrls: [], categoryId: '', sslNumber: '',
   sslEmissionDate: '', accountingEntry: '',
   date: new Date().toISOString().split('T')[0],
 };
@@ -23,10 +23,16 @@ export const Expenses: React.FC = () => {
   const { user }           = useAuth();
   const { formatCurrency } = useSettings();
 
-  const [expenses, setExpenses]         = useState<Expense[]>([]);
-  const [products, setProducts]         = useState<Product[]>([]);
-  const [activities, setActivities]     = useState<Activity[]>([]);
+  const [expenses, setExpenses]           = useState<Expense[]>([]);
+  const [products, setProducts]           = useState<Product[]>([]);
+  const [activities, setActivities]       = useState<Activity[]>([]);
+  const [categories, setCategories]       = useState<Category[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
+  const [providerTypes, setProviderTypes] = useState<ProviderType[]>([]);
+  const [providers, setProviders]         = useState<Provider[]>([]);
+
+  // local modal state for cascading provider selector
+  const [selectedProvTypeId, setSelectedProvTypeId] = useState<string>('');
 
   const [search, setSearch]                       = useState('');
   const [selectedYear, setSelectedYear]           = useState<number>(new Date().getFullYear());
@@ -39,13 +45,17 @@ export const Expenses: React.FC = () => {
   const [showConfirm, setShowConfirm]       = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
 
   const fetchData = async () => {
-    const [exps, prods, acts, years] = await Promise.all([
+    const [exps, prods, acts, cats, years, pts, provs] = await Promise.all([
       apiRequest<Expense[]>('/api/expenses'),
       apiRequest<Product[]>('/api/products'),
       apiRequest<Activity[]>('/api/activities'),
+      apiRequest<Category[]>('/api/categories'),
       apiRequest<AcademicYear[]>('/api/academic-years'),
+      apiRequest<ProviderType[]>('/api/provider-types'),
+      apiRequest<Provider[]>('/api/providers'),
     ]);
-    setExpenses(exps); setProducts(prods); setActivities(acts); setAcademicYears(years);
+    setExpenses(exps); setProducts(prods); setActivities(acts); setCategories(cats);
+    setAcademicYears(years); setProviderTypes(pts); setProviders(provs);
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -55,10 +65,13 @@ export const Expenses: React.FC = () => {
       setEditingExpense(expense);
       setNewExpense(expense);
       setAttachmentNames(expense.attachmentUrls ?? (expense.attachmentUrl ? [expense.attachmentUrl] : []));
+      // Restore the providerType selection from the saved providerTypeId
+      setSelectedProvTypeId(expense.providerTypeId ?? '');
     } else {
       setEditingExpense(null);
       setNewExpense(EMPTY);
       setAttachmentNames([]);
+      setSelectedProvTypeId('');
     }
     setShowModal(true);
   };
@@ -68,6 +81,7 @@ export const Expenses: React.FC = () => {
     setEditingExpense(null);
     setNewExpense(EMPTY);
     setAttachmentNames([]);
+    setSelectedProvTypeId('');
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -141,17 +155,23 @@ export const Expenses: React.FC = () => {
     const rows = filtered.map(e => {
       const product  = products.find(p => p.id === e.productId);
       const activity = activities.find(a => a.id === e.activityId);
+      const provType = providerTypes.find(pt => pt.id === e.providerTypeId);
+      // Resolve category from categoryId or via activity
+      const category = categories.find(c => c.id === e.categoryId)
+        ?? categories.find(c => c.id === activity?.categoryId);
       return {
         'Fecha':              fmtDate(e.date),
         'Año':                product?.year ?? '',
         'Producto':           product?.name ?? '',
         'Centro de Costos':   product?.costCenter ?? '',
         'Modalidad':          product?.modality ?? '',
+        'Categoría':          category?.name ?? '',
         'Actividad':          activity?.name ?? '',
         'N° SSL':             e.sslNumber ?? '',
         'Fecha Emisión SSL':  fmtDate(e.sslEmissionDate ?? ''),
         '# Partida Contable': e.accountingEntry ?? '',
         'Monto':              e.amount,
+        'Tipo Proveedor':     provType?.name ?? '',
         'Proveedor':          e.provider,
         'Descripción':        e.description ?? '',
         'Adjuntos':           (e.attachmentUrls ?? (e.attachmentUrl ? [e.attachmentUrl] : [])).join(' | '),
@@ -235,6 +255,7 @@ export const Expenses: React.FC = () => {
               <th>Fecha Emisión SSL</th>
               <th># Partida</th>
               <th>Monto</th>
+              <th>Tipo Proveedor</th>
               <th>Proveedor</th>
               <th>Adjuntos</th>
               <th className="text-right">Acciones</th>
@@ -242,9 +263,10 @@ export const Expenses: React.FC = () => {
           </thead>
           <tbody>
             {filtered.map(expense => {
-              const product  = products.find(p => p.id === expense.productId);
-              const activity = activities.find(a => a.id === expense.activityId);
-              const files    = expense.attachmentUrls ?? (expense.attachmentUrl ? [expense.attachmentUrl] : []);
+              const product    = products.find(p => p.id === expense.productId);
+              const activity   = activities.find(a => a.id === expense.activityId);
+              const provType   = providerTypes.find(pt => pt.id === expense.providerTypeId);
+              const files      = expense.attachmentUrls ?? (expense.attachmentUrl ? [expense.attachmentUrl] : []);
               return (
                 <tr key={expense.id}>
                   <td className="text-slate-500 whitespace-nowrap">{fmtDate(expense.date)}</td>
@@ -260,7 +282,8 @@ export const Expenses: React.FC = () => {
                   <td className="text-slate-500 text-xs whitespace-nowrap">{fmtDate(expense.sslEmissionDate ?? '')}</td>
                   <td className="text-slate-500 font-mono text-xs">{expense.accountingEntry || <span className="text-slate-200">—</span>}</td>
                   <td className="font-bold text-slate-900 whitespace-nowrap">{formatCurrency(expense.amount)}</td>
-                  <td className="text-slate-500">{expense.provider}</td>
+                  <td className="text-slate-400 text-xs">{provType?.name || <span className="text-slate-200">—</span>}</td>
+                  <td className="text-slate-500">{expense.provider || <span className="text-slate-200">—</span>}</td>
                   <td>
                     {files.length > 0
                       ? <div className="flex flex-col gap-0.5">
@@ -294,7 +317,7 @@ export const Expenses: React.FC = () => {
             })}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={11} className="text-center py-16 text-slate-300 text-sm">
+                <td colSpan={12} className="text-center py-16 text-slate-300 text-sm">
                   No hay gastos para los filtros seleccionados.
                 </td>
               </tr>
@@ -382,11 +405,33 @@ export const Expenses: React.FC = () => {
                     onChange={e => setNewExpense({ ...newExpense, amount: Number(e.target.value) })} />
                 </div>
 
-                {/* Proveedor */}
+                {/* Tipo de proveedor — oculto, se guarda automáticamente */}
+                {/* Proveedor — lista completa, tipo se resuelve automáticamente */}
                 <div>
                   <label className="field-label">Proveedor</label>
-                  <input required className="field" value={newExpense.provider}
-                    onChange={e => setNewExpense({ ...newExpense, provider: e.target.value })} />
+                  <select
+                    required
+                    className="field"
+                    value={newExpense.provider ?? ''}
+                    onChange={e => {
+                      const selected = providers.find(p => p.name === e.target.value);
+                      setNewExpense({
+                        ...newExpense,
+                        provider: e.target.value,
+                        providerTypeId: selected?.providerTypeId ?? '',
+                      });
+                    }}
+                  >
+                    <option value="">Seleccione proveedor…</option>
+                    {providers.filter(p => p.active).map(p => {
+                      const pt = providerTypes.find(t => t.id === p.providerTypeId);
+                      return (
+                        <option key={p.id} value={p.name}>
+                          {p.name}{pt ? ` (${pt.name})` : ''}
+                        </option>
+                      );
+                    })}
+                  </select>
                 </div>
 
                 {/* N° SSL */}

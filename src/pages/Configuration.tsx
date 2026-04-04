@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Category, Activity, User, Product, AcademicYear } from '../types';
-import { Plus, Tag, Layers, CheckCircle, XCircle, Edit2, Save, Users as UsersIcon, BookOpen, Calendar, Trash2, Settings2 } from 'lucide-react';
+import { Category, Activity, User, Product, AcademicYear, ProviderType, Provider } from '../types';
+import {
+  Plus, Tag, Layers, CheckCircle, XCircle, Edit2, Save,
+  Users as UsersIcon, BookOpen, Calendar, Trash2, Settings2,
+  Truck, Building2,
+} from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { useSettings } from '../SettingsContext';
 import { apiRequest } from '../services/api';
@@ -50,54 +54,78 @@ const Section = ({ icon: Icon, iconBg, title, children, action }: {
 export const Configuration: React.FC = () => {
   const { user }   = useAuth();
   const { currency, language, logoUrl, setCurrency, setLanguage, setLogoUrl } = useSettings();
+  const isMarketing = user?.role === 'JEFA_MARKETING';
 
+  // ── State ──────────────────────────────────────────────────────────────
   const [categories, setCategories]       = useState<Category[]>([]);
   const [activities, setActivities]       = useState<Activity[]>([]);
   const [users, setUsers]                 = useState<User[]>([]);
   const [products, setProducts]           = useState<Product[]>([]);
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([]);
+  const [providerTypes, setProviderTypes] = useState<ProviderType[]>([]);
+  const [providers, setProviders]         = useState<Provider[]>([]);
   const [loading, setLoading]             = useState(true);
 
-  const [showCatModal, setShowCatModal]     = useState(false);
-  const [showActModal, setShowActModal]     = useState(false);
-  const [showYearModal, setShowYearModal]   = useState(false);
+  // Modals
+  const [showCatModal, setShowCatModal]       = useState(false);
+  const [showActModal, setShowActModal]       = useState(false);
+  const [showYearModal, setShowYearModal]     = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
-  const [showConfirm, setShowConfirm]       = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
+  const [showPTModal, setShowPTModal]         = useState(false);
+  const [showProvModal, setShowProvModal]     = useState(false);
+  const [showConfirm, setShowConfirm]         = useState<{ title: string; message: string; onConfirm: () => void } | null>(null);
 
+  // Editing
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null);
   const [editingYear, setEditingYear]         = useState<AcademicYear | null>(null);
   const [selectedUser, setSelectedUser]       = useState<User | null>(null);
+  const [editingPT, setEditingPT]             = useState<ProviderType | null>(null);
+  const [editingProv, setEditingProv]         = useState<Provider | null>(null);
 
+  // New-item forms
   const [newCategory, setNewCategory] = useState({ name: '' });
   const [newActivity, setNewActivity] = useState({ name: '', categoryId: '' });
   const [newYear, setNewYear]         = useState({ year: new Date().getFullYear() });
+  const [newPT, setNewPT]             = useState({ name: '' });
+  const [newProv, setNewProv]         = useState({ name: '', providerTypeId: '' });
 
-  const [tempCurrency, setTempCurrency] = useState(currency);
-  const [tempLanguage, setTempLanguage] = useState(language);
-  const [tempLogoUrl, setTempLogoUrl]   = useState(logoUrl);
-  const [settingsSaved, setSettingsSaved] = useState(false);
+  // Settings
+  const [tempCurrency, setTempCurrency]     = useState(currency);
+  const [tempLanguage, setTempLanguage]     = useState(language);
+  const [tempLogoUrl, setTempLogoUrl]       = useState(logoUrl);
+  const [settingsSaved, setSettingsSaved]   = useState(false);
 
+  // ── Fetch ──────────────────────────────────────────────────────────────
   const fetchData = async () => {
     try {
-      const [cats, acts, usrs, prods, years] = await Promise.all([
+      const [cats, acts, usrs, prods, years, pts, provs] = await Promise.all([
         apiRequest<Category[]>('/api/categories'),
         apiRequest<Activity[]>('/api/activities'),
         apiRequest<User[]>('/api/users'),
         apiRequest<Product[]>('/api/products'),
         apiRequest<AcademicYear[]>('/api/academic-years'),
+        apiRequest<ProviderType[]>('/api/provider-types'),
+        apiRequest<Provider[]>('/api/providers'),
       ]);
-      setCategories(cats); setActivities(acts); setUsers(usrs); setProducts(prods); setAcademicYears(years);
+      setCategories(cats); setActivities(acts); setUsers(usrs); setProducts(prods);
+      setAcademicYears(years); setProviderTypes(pts); setProviders(provs);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };
 
   useEffect(() => { fetchData(); }, []);
 
-  /* ── Handlers ── */
+  // ── Helpers ────────────────────────────────────────────────────────────
   const confirmDelete = (title: string, message: string, onConfirm: () => Promise<void>) =>
     setShowConfirm({ title, message, onConfirm: async () => { await onConfirm(); setShowConfirm(null); fetchData(); } });
 
+  const toggle = async (url: string, item: Record<string, unknown>) => {
+    await apiRequest(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...item, active: !item.active }) });
+    fetchData();
+  };
+
+  // ── Handlers ──────────────────────────────────────────────────────────
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     const url = editingCategory ? `/api/categories/${editingCategory.id}` : '/api/categories';
@@ -131,9 +159,26 @@ export const Configuration: React.FC = () => {
     setShowYearModal(false); setEditingYear(null); setNewYear({ year: new Date().getFullYear() }); fetchData();
   };
 
-  const toggle = async (url: string, item: Record<string, unknown>) => {
-    await apiRequest(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...item, active: !item.active }) });
-    fetchData();
+  const handleSavePT = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const url = editingPT ? `/api/provider-types/${editingPT.id}` : '/api/provider-types';
+    await apiRequest(url, {
+      method: editingPT ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...newPT, id: editingPT?.id ?? Date.now().toString(), active: editingPT?.active ?? true }),
+    });
+    setShowPTModal(false); setEditingPT(null); setNewPT({ name: '' }); fetchData();
+  };
+
+  const handleSaveProv = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const url = editingProv ? `/api/providers/${editingProv.id}` : '/api/providers';
+    await apiRequest(url, {
+      method: editingProv ? 'PUT' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...newProv, id: editingProv?.id ?? Date.now().toString(), active: editingProv?.active ?? true }),
+    });
+    setShowProvModal(false); setEditingProv(null); setNewProv({ name: '', providerTypeId: '' }); fetchData();
   };
 
   const handleSaveSettings = () => {
@@ -158,6 +203,7 @@ export const Configuration: React.FC = () => {
   return (
     <div className="page">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
         {/* ── Academic Years ── */}
         <Section icon={Calendar} iconBg="bg-violet-50 text-violet-600" title="Años académicos"
           action={<AddBtn onClick={() => { setEditingYear(null); setNewYear({ year: new Date().getFullYear() }); setShowYearModal(true); }} />}>
@@ -203,8 +249,49 @@ export const Configuration: React.FC = () => {
           </div>
         </Section>
 
-        {/* ── Program Assignment ── */}
-        {user?.role === 'JEFA_MARKETING' && (
+        {/* ── Tipo de Proveedor — solo JEFA_MARKETING ── */}
+        {isMarketing && (
+          <Section icon={Building2} iconBg="bg-amber-50 text-amber-600" title="Tipos de proveedor"
+            action={<AddBtn onClick={() => { setEditingPT(null); setNewPT({ name: '' }); setShowPTModal(true); }} />}>
+            <div className="space-y-2">
+              {providerTypes.map(pt => (
+                <ItemRow key={pt.id} label={pt.name}
+                  sublabel={`${providers.filter(p => p.providerTypeId === pt.id).length} proveedor(es)`}
+                  active={pt.active}
+                  onToggle={() => toggle(`/api/provider-types/${pt.id}`, pt as unknown as Record<string, unknown>)}
+                  onEdit={() => { setEditingPT(pt); setNewPT({ name: pt.name }); setShowPTModal(true); }}
+                  onDelete={() => confirmDelete(
+                    'Eliminar tipo de proveedor',
+                    'Se eliminarán también todos los proveedores de este tipo.',
+                    async () => apiRequest(`/api/provider-types/${pt.id}`, { method: 'DELETE' })
+                  )} />
+              ))}
+              {providerTypes.length === 0 && <p className="text-sm text-slate-400 text-center py-6">Sin tipos de proveedor registrados</p>}
+            </div>
+          </Section>
+        )}
+
+        {/* ── Proveedores — solo JEFA_MARKETING ── */}
+        {isMarketing && (
+          <Section icon={Truck} iconBg="bg-sky-50 text-sky-600" title="Proveedores"
+            action={<AddBtn onClick={() => { setEditingProv(null); setNewProv({ name: '', providerTypeId: '' }); setShowProvModal(true); }} />}>
+            <div className="space-y-2">
+              {providers.map(prov => {
+                const pt = providerTypes.find(t => t.id === prov.providerTypeId);
+                return (
+                  <ItemRow key={prov.id} label={prov.name} sublabel={pt?.name ?? 'Sin tipo'} active={prov.active}
+                    onToggle={() => toggle(`/api/providers/${prov.id}`, prov as unknown as Record<string, unknown>)}
+                    onEdit={() => { setEditingProv(prov); setNewProv({ name: prov.name, providerTypeId: prov.providerTypeId }); setShowProvModal(true); }}
+                    onDelete={() => confirmDelete('Eliminar proveedor', '¿Eliminar este proveedor?', async () => apiRequest(`/api/providers/${prov.id}`, { method: 'DELETE' }))} />
+                );
+              })}
+              {providers.length === 0 && <p className="text-sm text-slate-400 text-center py-6">Sin proveedores registrados</p>}
+            </div>
+          </Section>
+        )}
+
+        {/* ── Program Assignment — solo JEFA_MARKETING ── */}
+        {isMarketing && (
           <Section icon={UsersIcon} iconBg="bg-emerald-50 text-emerald-600" title="Asignación de programas">
             <div className="space-y-3">
               {users.filter(u => u.role === 'JEFA_PRODUCTO').map(u => {
@@ -364,6 +451,66 @@ export const Configuration: React.FC = () => {
               <div className="modal-footer">
                 <button type="button" className="btn-secondary" onClick={() => { setShowActModal(false); setEditingActivity(null); }}>Cancelar</button>
                 <button type="submit" className="btn-primary">{editingActivity ? 'Guardar' : 'Crear actividad'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Tipo de proveedor modal */}
+      {showPTModal && (
+        <div className="modal-overlay">
+          <div className="modal max-w-sm">
+            <div className="modal-header">
+              <h3 className="font-bold text-slate-900">{editingPT ? 'Editar tipo de proveedor' : 'Nuevo tipo de proveedor'}</h3>
+              <button className="btn-icon" onClick={() => { setShowPTModal(false); setEditingPT(null); }}>✕</button>
+            </div>
+            <form onSubmit={handleSavePT}>
+              <div className="modal-body">
+                <div>
+                  <label className="field-label">Nombre del tipo</label>
+                  <input required className="field" placeholder="Ej: Agencia, Freelance, Medio…"
+                    value={newPT.name} onChange={e => setNewPT({ name: e.target.value })} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn-secondary" onClick={() => { setShowPTModal(false); setEditingPT(null); }}>Cancelar</button>
+                <button type="submit" className="btn-primary">{editingPT ? 'Guardar' : 'Crear tipo'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Proveedor modal */}
+      {showProvModal && (
+        <div className="modal-overlay">
+          <div className="modal max-w-sm">
+            <div className="modal-header">
+              <h3 className="font-bold text-slate-900">{editingProv ? 'Editar proveedor' : 'Nuevo proveedor'}</h3>
+              <button className="btn-icon" onClick={() => { setShowProvModal(false); setEditingProv(null); }}>✕</button>
+            </div>
+            <form onSubmit={handleSaveProv}>
+              <div className="modal-body">
+                <div>
+                  <label className="field-label">Tipo de proveedor</label>
+                  <select required className="field" value={newProv.providerTypeId}
+                    onChange={e => setNewProv({ ...newProv, providerTypeId: e.target.value })}>
+                    <option value="">Seleccionar tipo…</option>
+                    {providerTypes.filter(pt => pt.active).map(pt => (
+                      <option key={pt.id} value={pt.id}>{pt.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="field-label">Nombre del proveedor</label>
+                  <input required className="field" placeholder="Nombre del proveedor"
+                    value={newProv.name} onChange={e => setNewProv({ ...newProv, name: e.target.value })} />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn-secondary" onClick={() => { setShowProvModal(false); setEditingProv(null); }}>Cancelar</button>
+                <button type="submit" className="btn-primary">{editingProv ? 'Guardar' : 'Crear proveedor'}</button>
               </div>
             </form>
           </div>

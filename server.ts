@@ -213,6 +213,84 @@ async function startServer() {
     }
   });
 
+  // ── Provider Types ───────────────────────────────────────────────────────
+  app.get("/api/provider-types", (_req, res) => res.json((db as any).providerTypes ?? []));
+
+  app.post("/api/provider-types", (req, res) => {
+    const item = { ...req.body, id: Date.now().toString(), active: true };
+    if (!(db as any).providerTypes) (db as any).providerTypes = [];
+    (db as any).providerTypes.push(item);
+    saveDB();
+    logAudit(req, "CREATE", "PROVIDER_TYPE", `Tipo de proveedor creado: ${item.name}`);
+    res.json(item);
+  });
+
+  app.put("/api/provider-types/:id", (req, res) => {
+    const { id } = req.params;
+    const list = (db as any).providerTypes ?? [];
+    const idx  = list.findIndex((x: any) => x.id === id);
+    if (idx !== -1) {
+      list[idx] = { ...list[idx], ...req.body };
+      (db as any).providerTypes = list;
+      saveDB();
+      logAudit(req, "UPDATE", "PROVIDER_TYPE", `Tipo de proveedor actualizado: ${list[idx].name}`);
+      res.json(list[idx]);
+    } else { res.status(404).json({ error: "No encontrado" }); }
+  });
+
+  app.delete("/api/provider-types/:id", (req, res) => {
+    const { id } = req.params;
+    const list = (db as any).providerTypes ?? [];
+    const item = list.find((x: any) => x.id === id);
+    if (item) {
+      (db as any).providerTypes = list.filter((x: any) => x.id !== id);
+      // Eliminar proveedores asociados al tipo
+      if ((db as any).providers) {
+        (db as any).providers = (db as any).providers.filter((p: any) => p.providerTypeId !== id);
+      }
+      saveDB();
+      logAudit(req, "DELETE", "PROVIDER_TYPE", `Tipo de proveedor eliminado: ${item.name}`);
+      res.json({ success: true });
+    } else { res.status(404).json({ error: "No encontrado" }); }
+  });
+
+  // ── Providers ────────────────────────────────────────────────────────────
+  app.get("/api/providers", (_req, res) => res.json((db as any).providers ?? []));
+
+  app.post("/api/providers", (req, res) => {
+    const item = { ...req.body, id: Date.now().toString(), active: true };
+    if (!(db as any).providers) (db as any).providers = [];
+    (db as any).providers.push(item);
+    saveDB();
+    logAudit(req, "CREATE", "PROVIDER", `Proveedor creado: ${item.name}`);
+    res.json(item);
+  });
+
+  app.put("/api/providers/:id", (req, res) => {
+    const { id } = req.params;
+    const list = (db as any).providers ?? [];
+    const idx  = list.findIndex((x: any) => x.id === id);
+    if (idx !== -1) {
+      list[idx] = { ...list[idx], ...req.body };
+      (db as any).providers = list;
+      saveDB();
+      logAudit(req, "UPDATE", "PROVIDER", `Proveedor actualizado: ${list[idx].name}`);
+      res.json(list[idx]);
+    } else { res.status(404).json({ error: "No encontrado" }); }
+  });
+
+  app.delete("/api/providers/:id", (req, res) => {
+    const { id } = req.params;
+    const list = (db as any).providers ?? [];
+    const item = list.find((x: any) => x.id === id);
+    if (item) {
+      (db as any).providers = list.filter((x: any) => x.id !== id);
+      saveDB();
+      logAudit(req, "DELETE", "PROVIDER", `Proveedor eliminado: ${item.name}`);
+      res.json({ success: true });
+    } else { res.status(404).json({ error: "No encontrado" }); }
+  });
+
   app.get("/api/academic-years", (req, res) => res.json(db.academicYears));
   app.post("/api/academic-years", (req, res) => {
     const newYear = { ...req.body, id: Date.now().toString() };
