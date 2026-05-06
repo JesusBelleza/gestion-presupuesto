@@ -233,6 +233,7 @@ export const Dashboard: React.FC = () => {
       executionRate,
       chartData,
       pieData,
+      providerTypeData: pieProviderData,
       products: filteredProducts,
       expenses: filteredExpenses,
       productRanking,

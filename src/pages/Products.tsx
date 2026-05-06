@@ -122,7 +122,7 @@ export const Products: React.FC = () => {
     if (!selectedProduct) return;
     const plansToSave: BudgetPlan[] = [];
     Object.entries(planData).forEach(([key, amount]) => {
-      if (Number(amount) > 0) {
+      if (amount !== undefined && amount !== null && String(amount) !== '') {
         const dashIdx    = key.indexOf('-');
         const activityId = key.substring(0, dashIdx);
         const month      = key.substring(dashIdx + 1); // YYYY-MM
@@ -295,18 +295,24 @@ export const Products: React.FC = () => {
                 </div>
                 <div>
                   <label className="field-label">Presupuesto total</label>
-                  <input type="number" required className="field" value={newProduct.totalBudget}
-                    onChange={e => setNewProduct({ ...newProduct, totalBudget: Number(e.target.value) })} />
+                  <input type="number" required className="field"
+                    value={newProduct.totalBudget === 0 && !editingProduct ? '' : newProduct.totalBudget}
+                    placeholder="0"
+                    onChange={e => setNewProduct({ ...newProduct, totalBudget: e.target.value === '' ? 0 : Number(e.target.value) })} />
                 </div>
                 <div>
                   <label className="field-label">Meta de alumnos</label>
-                  <input type="number" required className="field" value={newProduct.studentGoal}
-                    onChange={e => setNewProduct({ ...newProduct, studentGoal: Number(e.target.value) })} />
+                  <input type="number" required className="field"
+                    value={newProduct.studentGoal === 0 && !editingProduct ? '' : newProduct.studentGoal}
+                    placeholder="0"
+                    onChange={e => setNewProduct({ ...newProduct, studentGoal: e.target.value === '' ? 0 : Number(e.target.value) })} />
                 </div>
                 <div>
                   <label className="field-label">Precio del producto</label>
-                  <input type="number" required className="field" value={newProduct.productPrice}
-                    onChange={e => setNewProduct({ ...newProduct, productPrice: Number(e.target.value) })} />
+                  <input type="number" required className="field"
+                    value={newProduct.productPrice === 0 && !editingProduct ? '' : newProduct.productPrice}
+                    placeholder="0"
+                    onChange={e => setNewProduct({ ...newProduct, productPrice: e.target.value === '' ? 0 : Number(e.target.value) })} />
                 </div>
                 <div>
                   <label className="field-label">Año académico</label>
@@ -322,7 +328,7 @@ export const Products: React.FC = () => {
                   <label className="field-label">Modalidad</label>
                   <select className="field" value={newProduct.modality}
                     onChange={e => setNewProduct({ ...newProduct, modality: e.target.value })}>
-                    <option>Presencial</option><option>Online</option><option>Híbrida</option>
+                    <option>Presencial</option><option>Semipresencial</option><option>Online</option><option>Híbrida</option>
                   </select>
                 </div>
                 <div>
@@ -339,8 +345,9 @@ export const Products: React.FC = () => {
                 <div>
                   <label className="field-label">Duración (meses)</label>
                   <input type="number" required min="1" max="24" className="field"
-                    value={newProduct.campaignMonths}
-                    onChange={e => setNewProduct({ ...newProduct, campaignMonths: Number(e.target.value) })} />
+                    value={newProduct.campaignMonths === 0 ? '' : newProduct.campaignMonths}
+                    placeholder="6"
+                    onChange={e => setNewProduct({ ...newProduct, campaignMonths: e.target.value === '' ? 0 : Number(e.target.value) })} />
                 </div>
               </div>
               <div className="modal-footer">

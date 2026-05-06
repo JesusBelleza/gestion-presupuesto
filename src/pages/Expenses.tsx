@@ -401,8 +401,10 @@ export const Expenses: React.FC = () => {
                 {/* Monto */}
                 <div>
                   <label className="field-label">Monto</label>
-                  <input type="number" required min="0" step="0.01" className="field" value={newExpense.amount}
-                    onChange={e => setNewExpense({ ...newExpense, amount: Number(e.target.value) })} />
+                  <input type="number" required min="0" step="0.01" className="field"
+                    value={newExpense.amount === 0 ? '' : newExpense.amount}
+                    placeholder="0.00"
+                    onChange={e => setNewExpense({ ...newExpense, amount: e.target.value === '' ? 0 : Number(e.target.value) })} />
                 </div>
 
                 {/* Tipo de proveedor — oculto, se guarda automáticamente */}

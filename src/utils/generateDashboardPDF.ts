@@ -217,6 +217,7 @@ export interface PDFReportData {
   executionRate: number;
   chartData: { name: string; Planificado: number; Ejecutado: number }[];
   pieData:   { name: string; value: number }[];
+  providerTypeData: { name: string; value: number }[];
   products:  any[];
   expenses:  any[];
   productRanking: { name: string; pct: number; budget: number; spent: number }[];
@@ -353,19 +354,20 @@ export async function generateDashboardPDF(data: PDFReportData) {
   txt(ctx, 'Ejecutado', M + 146, legY, 9, SLATE);
   curY += barH + 18;
 
-  // ── DONUT + RANKING ──────────────────────────────────────────────────────
+  // ── DONUT CATEGORÍA + DONUT TIPO PROVEEDOR ───────────────────────────────
   ctx.fillStyle = RED; ctx.fillRect(M, curY, 4, 22);
   txt(ctx, 'DISTRIBUCIÓN POR CATEGORÍA', M + 16, curY + 16, 11, '#0F172A', 'bold');
   const colMid = M + (PW - M * 2) / 2 + 10;
   ctx.fillStyle = RED; ctx.fillRect(colMid, curY, 4, 22);
-  txt(ctx, 'RANKING DE EJECUCIÓN POR PRODUCTO', colMid + 16, curY + 16, 11, '#0F172A', 'bold');
+  txt(ctx, 'DISTRIBUCIÓN POR TIPO DE PROVEEDOR', colMid + 16, curY + 16, 11, '#0F172A', 'bold');
   curY += 30;
 
   const col2W = (PW - M * 2 - 16) / 2;
-  const row2H = Math.max(210, 30 + data.productRanking.length * 38 + 20);
+  const donutRowH = 220;
 
-  card(ctx, M, curY, col2W, row2H);
-  const dcx = M + 90, dcy = curY + row2H / 2;
+  // Card categoría
+  card(ctx, M, curY, col2W, donutRowH);
+  const dcx = M + 90, dcy = curY + donutRowH / 2;
   drawDonut(ctx, data.pieData, dcx, dcy, 70, 34);
   txt(ctx, `${data.executionRate.toFixed(0)}%`, dcx, dcy + 5, 14, RED, 'bold', 'center');
 
@@ -379,24 +381,52 @@ export async function generateDashboardPDF(data: PDFReportData) {
     lY += 22;
   });
 
-  const rankX = M + col2W + 16;
-  card(ctx, rankX, curY, col2W, row2H);
+  // Card tipo de proveedor
+  const provX = M + col2W + 16;
+  card(ctx, provX, curY, col2W, donutRowH);
+  const pvCx = provX + 90, pvCy = curY + donutRowH / 2;
+  const provTotal = data.providerTypeData.reduce((s, d) => s + d.value, 0);
+  drawDonut(ctx, data.providerTypeData, pvCx, pvCy, 70, 34);
+  txt(ctx, `${data.providerTypeData.length}`, pvCx, pvCy + 5, 14, NAVY, 'bold', 'center');
+  txt(ctx, 'tipos', pvCx, pvCy + 20, 9, SLATE, 'normal', 'center');
+
+  let plY = curY + 20;
+  const provLegX = provX + 176;
+  data.providerTypeData.slice(0, 7).forEach((d, i) => {
+    const pct = provTotal > 0 ? ((d.value / provTotal) * 100).toFixed(1) : '0.0';
+    ctx.fillStyle = PIE_COLORS[i % PIE_COLORS.length]; rr(ctx, provLegX, plY, 10, 10, 2); ctx.fill();
+    txt(ctx, d.name.length > 18 ? d.name.slice(0, 16) + '…' : d.name, provLegX + 14, plY + 9, 9, '#475569');
+    txt(ctx, `${pct}%`, provLegX + col2W - 54, plY + 9, 9, '#0F172A', 'bold', 'right');
+    plY += 22;
+  });
+  if (data.providerTypeData.length === 0) {
+    txt(ctx, 'Sin datos de proveedores', pvCx, pvCy + 50, 10, '#94A3B8', 'normal', 'center');
+  }
+  curY += donutRowH + 20;
+
+  // ── RANKING DE PRODUCTOS ─────────────────────────────────────────────────
+  ctx.fillStyle = RED; ctx.fillRect(M, curY, 4, 22);
+  txt(ctx, 'RANKING DE EJECUCIÓN POR PRODUCTO', M + 16, curY + 16, 11, '#0F172A', 'bold');
+  curY += 30;
+
+  const row2H = Math.max(100, 30 + data.productRanking.length * 38 + 20);
+  card(ctx, M, curY, PW - M * 2, row2H);
   let rY = curY + 24;
   if (data.productRanking.length === 0) {
-    txt(ctx, 'Sin datos de productos', rankX + col2W / 2, curY + row2H / 2, 11, '#94A3B8', 'normal', 'center');
+    txt(ctx, 'Sin datos de productos', M + (PW - M * 2) / 2, curY + row2H / 2, 11, '#94A3B8', 'normal', 'center');
   } else {
     data.productRanking.forEach((p, i) => {
       const bf = i === 0 ? '#FEF08A' : i === 1 ? '#E2E8F0' : i === 2 ? '#FDE68A' : LIGHT;
       const bt = i === 0 ? '#713F12' : i === 1 ? '#475569' : i === 2 ? '#78350F' : SLATE;
-      ctx.fillStyle = bf; rr(ctx, rankX + 14, rY, 22, 22, 11); ctx.fill();
-      txt(ctx, String(i + 1), rankX + 25, rY + 15, 10, bt, 'bold', 'center');
-      const name  = p.name.length > 26 ? p.name.slice(0, 24) + '…' : p.name;
+      ctx.fillStyle = bf; rr(ctx, M + 14, rY, 22, 22, 11); ctx.fill();
+      txt(ctx, String(i + 1), M + 25, rY + 15, 10, bt, 'bold', 'center');
+      const name  = p.name.length > 40 ? p.name.slice(0, 38) + '…' : p.name;
       const color = p.pct > 90 ? RED : p.pct > 60 ? AMBER : GREEN;
-      txt(ctx, name, rankX + 44, rY + 14, 10, '#334155');
-      txt(ctx, `${p.pct.toFixed(1)}%`, rankX + col2W - 14, rY + 14, 10, color, 'bold', 'right');
+      txt(ctx, name, M + 44, rY + 14, 10, '#334155');
+      txt(ctx, `${p.pct.toFixed(1)}%`, M + (PW - M * 2) - 14, rY + 14, 10, color, 'bold', 'right');
       rY += 16;
-      ctx.fillStyle = LIGHT; rr(ctx, rankX + 44, rY, col2W - 64, 5, 3); ctx.fill();
-      if (p.pct > 0) { ctx.fillStyle = color; rr(ctx, rankX + 44, rY, (col2W - 64) * Math.min(p.pct / 100, 1), 5, 3); ctx.fill(); }
+      ctx.fillStyle = LIGHT; rr(ctx, M + 44, rY, (PW - M * 2) - 64, 5, 3); ctx.fill();
+      if (p.pct > 0) { ctx.fillStyle = color; rr(ctx, M + 44, rY, ((PW - M * 2) - 64) * Math.min(p.pct / 100, 1), 5, 3); ctx.fill(); }
       rY += 22;
     });
   }
